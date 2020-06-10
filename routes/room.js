@@ -1,7 +1,7 @@
 const express = require("express");
 const { v4: uuid } = require("uuid");
 const router = express.Router();
-const {sendMessage} = require('../utils')
+const { sendMessage } = require("../utils");
 
 const {
   saveToDataBase,
@@ -29,8 +29,8 @@ router.post("/create", async (req, res) => {
       {data:"This is data"},
       {title:"This is notification"}
       );
-      res.send({ uuid: id });
-  }, 5000)
+      res.send({status:"SUCCESS", roomId: id });
+  }, 2000)
 });
 
 router.post("/read", async (req, res) => {
@@ -41,19 +41,22 @@ router.post("/read", async (req, res) => {
     value: req.body.roomId,
   });
   if (data) res.send(data);
-  else res.send({ status: "ERROR", details: "No such document" });
+  else res.send({ status: "ERROR", details: "No such room found!" });
 });
 
-router.post("/update", async (req, res) => {
-  // body params => userId:string, token: string, user: string
+router.post("/join", async (req, res) => {
+  // body params => roomId:string, token: string, user: string
   const document = readItemFromDataBase({
     collection: "rooms",
     key: "roomId",
     value: req.body.roomId,
   });
   if (document) {
-    if(document.tokens.length === document.playersCount){
-      res.send({ status: "ERROR", details: "Room is full. Create another room" });
+    if (document.tokens.length === document.playersCount) {
+      res.send({
+        status: "ERROR",
+        details: "Room is full. Create another room!",
+      });
       return;
     }
     document.tokens.push(req.body.token);
@@ -64,7 +67,7 @@ router.post("/update", async (req, res) => {
     });
     res.send(data);
   } else {
-    res.send({ status: "ERROR", details: "No such document" });
+    res.send({ status: "ERROR", details: "No such room found!" });
   }
 });
 
