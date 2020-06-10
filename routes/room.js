@@ -65,7 +65,15 @@ router.post("/join", async (req, res) => {
       collection: "rooms",
       data: document,
     });
-    res.send(data);
+    setTimeout(()=>{
+      sendMessage(
+        document.tokens,
+        {data:"This is data"},
+        {title:"This is notification"}
+        );
+        res.send({status: 'SUCCESS', details: data});
+    }, 2000)
+
   } else {
     res.send({ status: "ERROR", details: "No such room found!" });
   }
