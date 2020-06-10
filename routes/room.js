@@ -1,6 +1,7 @@
 const express = require("express");
 const { v4: uuid } = require("uuid");
 const router = express.Router();
+const {sendMessage} = require('../utils')
 
 const {
   saveToDataBase,
@@ -11,9 +12,6 @@ const {
 router.post("/create", async (req, res) => {
   // body params => user: string, token: string, playersCount: number
   const id = uuid();
-  setTimeout(()=>{
-    res.send({ uuid: id });
-  }, 2000)
   const data = await saveToDataBase({
     collection: "rooms",
     data: {
@@ -25,6 +23,12 @@ router.post("/create", async (req, res) => {
     },
   });
   console.log("Data", data);
+  const status = await sendMessage(
+    [req.body.token],
+    {data:"This is data"},
+    {title:"This is notification"}
+  );
+  res.send({ uuid: id });
 });
 
 router.post("/read", async (req, res) => {
