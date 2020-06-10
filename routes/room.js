@@ -24,13 +24,13 @@ router.post("/create", async (req, res) => {
   });
   console.log("Data", data);
   setTimeout(()=>{
-    const status = await sendMessage(
+    sendMessage(
       [req.body.token],
       {data:"This is data"},
       {title:"This is notification"}
-    );
+      );
+      res.send({ uuid: id });
   }, 5000)
-  res.send({ uuid: id });
 });
 
 router.post("/read", async (req, res) => {
