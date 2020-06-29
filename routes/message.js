@@ -23,7 +23,11 @@ router.post("/broadcastToGroup", async (req, res) => {
       req.body.notification
     );
     res.send(status);
-  } else res.send({ status: "ERROR", details: data ? "Invalid Body params" : "No such document" });
+  } else
+    res.send({
+      status: "ERROR",
+      details: data ? "Invalid Body params" : "No such document",
+    });
 });
 
 module.exports = router;

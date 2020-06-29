@@ -7,75 +7,157 @@ const {
   saveToDataBase,
   readItemFromDataBase,
   updateToDataBase,
+  deleteFromDataBase,
 } = require("../utils");
 
 router.post("/create", async (req, res) => {
-  // body params => user: string, token: string, playersCount: number
-  const id = uuid();
-  const data = await saveToDataBase({
-    collection: "rooms",
-    data: {
-      roomId: id,
-      createdBy: req.body.user,
-      tokens: [req.body.token],
-      users: [req.body.user],
-      playersCount: req.body.playersCount,
-    },
-  });
-  console.log("Data", data);
-  setTimeout(()=>{
-    sendMessage(
-      [req.body.token],
-      {data:"This is data"},
-      {title:"This is notification"}
-      );
-      res.send({status:"SUCCESS", roomId: id });
-  }, 2000)
+  // body params => user: string, userId: string, token: string, roomSize: number
+  try {
+    const id = uuid();
+    const data = await saveToDataBase({
+      collection: "rooms",
+      data: {
+        roomId: id,
+        createdBy: req.body.userId,
+        tokens: [req.body.token],
+        users: [{ user: req.body.user, userId: req.body.userId }],
+        roomSize: req.body.roomSize.toString(),
+      },
+    });
+    res.send({
+      status: "SUCCESS",
+      data: {
+        roomId: id,
+      },
+    });
+  } catch (error) {
+    res.send({ status: "ERROR", data: error });
+  }
 });
 
 router.post("/read", async (req, res) => {
   // body params =>  roomId: string
-  const data = await readItemFromDataBase({
-    collection: "rooms",
-    key: "roomId",
-    value: req.body.roomId,
-  });
-  if (data) res.send(data);
-  else res.send({ status: "ERROR", details: "No such room found!" });
+  try {
+    const data = await readItemFromDataBase({
+      collection: "rooms",
+      key: "roomId",
+      value: req.body.roomId,
+    });
+    if (data) res.send({ status: "SUCCESS", data });
+    else res.send({ status: "ERROR", data: "No such room found!" });
+  } catch (e) {
+    console.log("Error", e);
+    res.send({ status: "ERROR", data: "Error occured while exit!" });
+  }
 });
 
 router.post("/join", async (req, res) => {
-  // body params => roomId:string, token: string, user: string
-  const document = readItemFromDataBase({
-    collection: "rooms",
-    key: "roomId",
-    value: req.body.roomId,
-  });
-  if (document) {
-    if (document.tokens.length === document.playersCount) {
-      res.send({
-        status: "ERROR",
-        details: "Room is full. Create another room!",
+  // body params => roomId:string, userId: string, token: string, user: string
+  try {
+    const document = await readItemFromDataBase({
+      collection: "rooms",
+      key: "roomId",
+      value: req.body.roomId,
+    });
+    if (document) {
+      if (document.tokens.length == document.roomSize) {
+        // Already all are joined
+        res.send({
+          status: "ERROR",
+          data: "Room is full. Create another room!",
+        });
+        return;
+      }
+
+      document.users.push({ user: req.body.user, userId: req.body.userId });
+      let messageResponse;
+      messageResponse = await sendMessage(document.tokens, {
+        type: "JOINED",
+        userName: req.body.user,
+        userId: req.body.userId,
+        users: JSON.stringify(document.users),
+        roomSize: document.roomSize,
+      },{
+        title:'Wow..! A Friend Accepted Your Invitation',
+        body:`${req.body.user} joined the Room.`
+      }
+      );
+
+      document.tokens.push(req.body.token);
+      const data = await updateToDataBase({
+        collection: "rooms",
+        data: document,
       });
+
+      if (document.tokens.length == document.roomSize) {
+        // All are joined
+        setTimeout(() => {
+          sendMessage(document.tokens, {
+            type: "STARTED",
+            roomSize: document.roomSize,
+            users: JSON.stringify(document.users),
+          });
+        }, 1000);
+      }
+      res.send({ status: "SUCCESS", data: messageResponse });
+    } else {
+      res.send({ status: "ERROR", data: "No such room found!" });
+    }
+  } catch (error) {
+    res.send({ status: "ERROR", data: error });
+  }
+});
+
+router.post("/exit", async (req, res) => {
+  // body params =>  roomId: string, userId: string,
+  try {
+    const document = await readItemFromDataBase({
+      collection: "rooms",
+      key: "roomId",
+      value: req.body.roomId,
+    });
+    if (!document) {
+      res.send({ status: "ERROR", data: "No such Room found!" });
       return;
     }
-    document.tokens.push(req.body.token);
-    document.users.push(req.body.user);
-    const data = await updateToDataBase({
-      collection: "rooms",
-      data: document,
-    });
-    setTimeout(()=>{
-      sendMessage(
-        document.tokens,
-        {data:"This is data"},
-        {title:"This is notification"}
-        );
-        res.send({status: 'SUCCESS', details: data});
-    }, 2000)
-
-  } else {
-    res.send({ status: "ERROR", details: "No such room found!" });
+    const index = document.users.findIndex(
+      (user) => user.userId === req.body.userId
+    );
+    if (index !== -1) {
+      if (document.createdBy === req.body.userId) {
+        // If creator exits, room will expire
+        // First index is the creator itself, he doesn't need notification
+        sendMessage(document.tokens.slice(1), {
+          type: "EXPIRED",
+        });
+        await deleteFromDataBase({
+          collection: "rooms",
+          key: "roomId",
+          value: document.roomId,
+        });
+      } else {
+        // Removes the exited user
+        document.tokens.splice(index, 1);
+        const [userObj] = document.users.splice(index, 1);
+        if (userObj) {
+          sendMessage(document.tokens, {
+            type: "EXITED",
+            userName: userObj.user,
+            userId: userObj.userId,
+            users: JSON.stringify(document.users),
+            roomSize: document.roomSize,
+          });
+        }
+        const data = await updateToDataBase({
+          collection: "rooms",
+          data: document,
+        });
+        res.send({ status: "SUCCESS", data });
+      }
+    } else res.send({ status: "ERROR", data: "No such Room or User found!" });
+  } catch (e) {
+    console.log("Error", e);
+    res.send({ status: "ERROR", data: "Error occured while exit!" });
   }
 });
 
